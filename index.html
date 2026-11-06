@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
+<title>Highway Dash</title>
+<style>
+  html,body{margin:0;height:100%;background:#1b1f2a;color:#f4f0e6;font-family:"Trebuchet MS",Verdana,sans-serif;overflow:hidden;touch-action:none}
+  #wrap{height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px}
+  canvas{background:#2e323d;border:4px solid #f2b705;border-radius:10px;max-height:78vh;max-width:96vw;aspect-ratio:2/3}
+  #hud{display:flex;gap:28px;font-size:20px;font-weight:bold}
+  #hud span b{color:#f2b705}
+  #touch{display:none;gap:16px}
+  #touch button{width:110px;height:56px;font-size:26px;border:0;border-radius:12px;background:#f2b705;color:#1b1f2a;font-weight:bold}
+  @media (pointer:coarse){#touch{display:flex}}
+  #msg{position:absolute;text-align:center;pointer-events:none}
+  #msg h1{margin:0 0 6px;font-size:40px;color:#f2b705}
+  #msg p{margin:2px;font-size:18px}
+</style>
+</head>
+<body>
+<div id="wrap">
+  <div id="hud"><span>Score <b id="sc">0</b></span><span>Best <b id="hi">0</b></span></div>
+  <canvas id="c" width="400" height="600"></canvas>
+  <div id="touch"><button id="bl">◀</button><button id="br">▶</button></div>
+</div>
+<div id="msg"><h1>Highway Dash</h1><p>Dodge the traffic.</p><p>Arrow keys or A / D to steer.</p><p>Press Space or tap to start.</p></div>
+<script>
+const cv=document.getElementById('c'),g=cv.getContext('2d');
+const W=400,H=600,LANES=4,LW=W/LANES,CW=44,CH=76;
+const msg=document.getElementById('msg'),scEl=document.getElementById('sc'),hiEl=document.getElementById('hi');
+let best=0;try{best=+localStorage.getItem('hd_best')||0}catch(e){}
+hiEl.textContent=best;
+let state='ready',player,cars,score,speed,spawnT,lineOff,keys={};
+const colors=['#e63946','#4cc9f0','#80ed99','#c77dff','#f4f0e6','#ff9f1c'];
+
+function reset(){
+  player={x:W/2-CW/2,y:H-CH-24,v:0};
+  cars=[];score=0;speed=4;spawnT=0;lineOff=0;
+}
+function car(x,y,c,hero){
+  g.fillStyle='rgba(0,0,0,.35)';g.fillRect(x+4,y+6,CW,CH);
+  g.fillStyle=c;g.beginPath();g.roundRect(x,y,CW,CH,9);g.fill();
+  g.fillStyle='rgba(20,25,35,.85)';
+  g.fillRect(x+6,y+(hero?14:CH-34),CW-12,18);
+  g.fillStyle=hero?'#fff7c2':'#ffb3b3';
+  const ly=hero?y+2:y+CH-6;
+  g.fillRect(x+4,ly,9,4);g.fillRect(x+CW-13,ly,9,4);
+}
+function start(){reset();state='play';msg.style.display='none'}
+function over(){
+  state='over';
+  if(score>best){best=score;hiEl.textContent=best;try{localStorage.setItem('hd_best',best)}catch(e){}}
+  msg.innerHTML='<h1>Crash!</h1><p>Score: '+score+'</p><p>Press Space or tap to retry.</p>';
+  msg.style.display='block';
+}
+function update(){
+  if(state!=='play')return;
+  const dir=(keys.ArrowRight||keys.d||keys.D?1:0)-(keys.ArrowLeft||keys.a||keys.A?1:0);
+  player.v+=(dir*7-player.v)*0.25;
+  player.x=Math.max(6,Math.min(W-CW-6,player.x+player.v));
+  speed+=0.0015;
+  lineOff=(lineOff+speed)%60;
+  spawnT--;
+  if(spawnT<=0){
+    const lane=Math.floor(Math.random()*LANES);
+    const x=lane*LW+(LW-CW)/2;
+    if(!cars.some(c=>c.y<CH*1.6&&Math.abs(c.x-x)<4)){
+      cars.push({x,y:-CH,c:colors[Math.floor(Math.random()*colors.length)],s:speed*(0.55+Math.random()*0.3),p:false});
+    }
+    spawnT=Math.max(22,60-speed*4);
+  }
+  for(const c of cars){
+    c.y+=speed*0.6+c.s*0.5;
+    if(!c.p&&c.y>player.y+CH){c.p=true;score++;scEl.textContent=score}
+    const m=5;
+    if(player.x+m<c.x+CW&&player.x+CW-m>c.x&&player.y+m<c.y+CH&&player.y+CH-m>c.y){over();return}
+  }
+  cars=cars.filter(c=>c.y<H+CH);
+}
+function draw(){
+  g.fillStyle='#2e323d';g.fillRect(0,0,W,H);
+  g.fillStyle='#f2b705';g.fillRect(0,0,6,H);g.fillRect(W-6,0,6,H);
+  g.fillStyle='rgba(244,240,230,.7)';
+  for(let l=1;l<LANES;l++)for(let y=-60+lineOff;y<H;y+=60)g.fillRect(l*LW-2,y,4,30);
+  for(const c of cars)car(c.x,c.y,c.c,false);
+  if(player)car(player.x,player.y,'#f2b705',true);
+}
+function loop(){update();draw();requestAnimationFrame(loop)}
+reset();loop();
+
+addEventListener('keydown',e=>{
+  keys[e.key]=true;
+  if(e.key===' '||e.key==='Enter'){if(state!=='play')start();e.preventDefault()}
+  if(e.key.startsWith('Arrow'))e.preventDefault();
+});
+addEventListener('keyup',e=>{keys[e.key]=false});
+function hold(id,k){
+  const b=document.getElementById(id);
+  const on=e=>{e.preventDefault();keys[k]=true;if(state!=='play')start()};
+  const off=e=>{e.preventDefault();keys[k]=false};
+  b.addEventListener('touchstart',on);b.addEventListener('touchend',off);
+  b.addEventListener('mousedown',on);b.addEventListener('mouseup',off);b.addEventListener('mouseleave',off);
+}
+hold('bl','ArrowLeft');hold('br','ArrowRight');
+cv.addEventListener('click',()=>{if(state!=='play')start()});
+</script>
+</body>
+</html>
